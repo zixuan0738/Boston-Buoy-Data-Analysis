@@ -1,0 +1,572 @@
+---
+title: "Boston Buoy Data Analysis"
+author:
+- Zixuan Liu (zliu203)
+- Chi Zhang (zc9714)
+- Jiaheng Li (jli305)
+date: "SEP 24th 2020"
+output:
+  html_document:
+    df_print: paged
+subtitle: MA 615 Team Project
+---
+
+```{r setup, include=FALSE}
+#reload all data
+rm(list = ls())
+```
+
+
+```{r, include = FALSE}
+# install and load packages
+pkg_list = c('ggplot2', 'tidyr', 'lubridate', 'tidyverse','naniar','GGally','corrplot','easyGgplot2')
+to_install_pkgs = pkg_list[!(pkg_list %in% installed.packages()[,"Package"])]
+if(length(to_install_pkgs)) {
+  install.packages(to_install_pkgs, repos = "https://cloud.r-project.org")
+}
+sapply(pkg_list, require, character.only = TRUE)
+
+# Sets default chunk options
+knitr::opts_chunk$set(
+  fig.align = "center", 
+  echo = FALSE, 
+  message = FALSE,
+  warning = FALSE,
+  cache = TRUE,
+  error = TRUE
+)
+
+```
+
+# 1. Introduction
+
+## 1.1 Background Research and Project Aims
+In seeking evidence of the forming of global warming, our group tried to reformat and analyze the data collected by a single weather buoy in the NOAA National Data Buoy Center. To make an approach to our research goal, we used Rstudio to modify the data and distracting our teamwork through Zoom and Github. During the process of handling the data, we made substitutions for NA data, transform the date-time data into POSIX numbers using lubridate, and determine an appropriate sampling frequency. After refining the data by using R coding, we finally have an objective view of our initial goal.
+
+### 1.2.1 Variables
+There are total 19 variables. The first 13 independent variables in this project is
+
+###### "WDIR"- Wind Direction (WDIR): WNW ( 300 deg true )
+###### "WSPD"-Wind Speed (WSPD): 9.7 kts
+###### "GST"- Wind Gust (GST): 11.7 kts
+###### "WVHT"- Wave Height (WVHT): 3.6 ft
+###### "DPD"- Dominant Wave Period Dominant Wave Period (DPD): 13 sec
+###### "APD"- Average Period Average Period (APD): 6.8 sec
+###### "MWD"- Mean Wave Direction Mean Wave Direction (MWD): E ( 84 deg true )
+###### "PRES"- Atmospheric Pressure Atmospheric Pressure (PRES): 29.71 in
+###### "WTMP"- Water Temperature Water Temperature (WTMP): 61.3 °F
+###### "DEWP"- Dew Point Dew Point (DEWP): 55.8 °F
+###### "VIS- Visibility
+
+###### "TIDE"- Tide
+
+The dependent variable in this project is 
+
+###### "ATMP"- Air Temperature Air Temperature (ATMP): 67.5 °F
+
+### 1.2.2 10 Observations 
+
+First, we download Historical data from NOAA National Data Buoy Center. Read data ofNDBC Station 44013, years from 1987 to 2019. We found out that this dataset contain a huge amount of data, total of 276411 rows. We first separate the raw data to 5 smaller one which contain same column within each set. then convert 'YY', 'MM', 'DD' to a single variable called 'DATE', and 'HH', 'mm' to 'TIME'.
+The head six observations are listed below:  
+
+
+```{r readin_top10}
+url1 <- "https://www.ndbc.noaa.gov/view_text_file.php?filename=44013h"
+url2 <- ".txt.gz&dir=data/historical/stdmet/"
+
+years <- c(1987:2019)
+
+urls <- str_c(url1, years, url2, sep = "")
+
+filenames <- str_c("mr", years,sep ="")
+
+
+#### read table
+# 87-98
+merge.data1 <-read_table2(urls[1],col_names = TRUE)
+for (i in 2:12){
+  new.data <- read_table2(urls[i],col_names = TRUE)
+  merge.data1 <- rbind(merge.data1,new.data)
+}
+
+YY <- rep("19",nrow(merge.data1))
+mm <- rep("00",nrow(merge.data1))
+DATE <- str_c(YY,merge.data1$YY,merge.data1$MM,merge.data1$DD)
+DATE <- ymd(DATE)
+MONTH <- as.numeric(merge.data1$MM)
+TIME <- hms::hms(min= as.numeric(mm),
+            hours = as.numeric(merge.data1$hh))
+merge.data1 <- merge.data1[,-c(1:4)]
+merge.data1 <- cbind(DATE,MONTH,TIME,merge.data1)
+
+# 99
+merge.data2 <-read_table2(urls[13],col_names = TRUE)
+mm <- rep("00",nrow(merge.data2))
+DATE <- str_c(merge.data2$YYYY,merge.data2$MM,merge.data2$DD)
+DATE <- ymd(DATE)
+MONTH <- as.numeric(merge.data2$MM)
+TIME <- hms::hms(min= as.numeric(mm),
+            hours = as.numeric(merge.data2$hh))
+merge.data2 <- merge.data2[,-c(1:4)]
+merge.data2 <- cbind(DATE,MONTH,TIME,merge.data2)
+
+# 00-04
+merge.data3 <-read_table2(urls[14],col_names = TRUE)
+for (i in 15:18){
+  new.data <- read_table2(urls[i],col_names = TRUE)
+  merge.data3 <- rbind(merge.data3,new.data)
+}
+mm <- rep("00",nrow(merge.data3))
+
+DATE <- str_c(merge.data3$YYYY,merge.data3$MM,merge.data3$DD)
+DATE <- ymd(DATE)
+MONTH <- as.numeric(merge.data3$MM)
+TIME <- hms::hms(min= as.numeric(mm),
+            hours = as.numeric(merge.data3$hh))
+
+merge.data3 <- merge.data3[,-c(1:4)]
+merge.data3 <- cbind(DATE,MONTH,TIME,merge.data3)
+
+
+# 05-06
+merge.data4 <-read_table2(urls[19],col_names = TRUE)
+new.data <- read_table2(urls[20],col_names = TRUE)
+merge.data4 <- rbind(merge.data4,new.data)
+mm <- as.numeric(merge.data4$mm)
+#mean(mm)
+
+DATE <- str_c(merge.data4$YYYY,merge.data4$MM,merge.data4$DD)
+DATE <- ymd(DATE)
+MONTH <- as.numeric(merge.data4$MM)
+TIME <- hms::hms(min= as.numeric(mm),
+            hours = as.numeric(merge.data4$hh))
+
+merge.data4 <- merge.data4[,-c(1:5)]
+merge.data4 <- cbind(DATE,MONTH,TIME,merge.data4)
+
+
+# 07-19 
+merge.data5 <-read_table2(urls[21],col_names = TRUE)
+merge.data5 <- merge.data5[-1,]
+for (i in 22:33){
+  new.data <- read_table2(urls[i],col_names = TRUE)
+  new.data <- new.data[-1,]
+  merge.data5 <- rbind(merge.data5,new.data)
+}
+mm <- as.numeric(merge.data5$mm)
+#mean(mm)
+
+DATE <- str_c(merge.data5$`#YY`,merge.data5$MM,merge.data5$DD)
+DATE <- ymd(DATE)
+MONTH <- as.numeric(merge.data5$MM)
+TIME <- hms::hms(min= as.numeric(mm),
+            hours = as.numeric(merge.data5$hh))
+
+merge.data5 <- merge.data5[,-c(1:5)]
+merge.data5 <- cbind(DATE,MONTH,TIME,merge.data5)
+
+
+head(merge.data1)
+head(merge.data2)
+head(merge.data3)
+head(merge.data4)
+head(merge.data5)
+
+```
+
+
+# 2. Summary Statistics and Data Visualization
+
+## 2.1 Missing Values & Data Preprocessing
+
+### 2.1.1 Missing Values
+
+First We conduct basic data preprocessing. Missing values for dataset are shown in the histogram below. 
+
+
+```{r}
+
+data_87_99 <- rbind(merge.data1,merge.data2)
+data_00_06 <- rbind(merge.data3,merge.data4)
+data_07_19 <- merge.data5
+
+#colnames(data_87_99)
+#colnames(data_00_06)
+#colnames(data_07_19)
+
+names(data_87_99)[names(data_87_99)=="BAR"]="PRES"
+names(data_00_06)[names(data_00_06)=="BAR"]="PRES"
+
+
+TIDE <- rep(NA,nrow(data_87_99))
+data_87_99<-cbind(data_87_99,TIDE)
+
+WDIR <- rep(NA,nrow(data_87_99))
+data_87_99<-cbind(data_87_99[,1:3],WDIR,data_87_99[,4:15])
+WDIR <- rep(NA,nrow(data_00_06))
+data_00_06<-cbind(data_00_06[,1:3],WDIR,data_00_06[,4:15])
+WD <- rep(NA,nrow(data_07_19))
+data_07_19<-cbind(data_07_19[,1:2],WD,data_07_19[,3:15])
+
+
+data_87_19 <- rbind(data_87_99,data_00_06,data_07_19)
+
+#str(data_87_19)
+
+for (i in 3:16){
+  data_87_19[,i] <- as.numeric(data_87_19[,i])
+  
+}
+#str(data_87_19)
+
+
+#summary(data_87_19,na.rm = TRUE)
+
+data_87_19$WD[data_87_19$WD==999] <- NA
+data_87_19$WDIR[data_87_19$WDIR==999] <- NA
+data_87_19$WSPD[data_87_19$WSPD==99] <- NA
+data_87_19$GST[data_87_19$GST==99] <- NA
+data_87_19$WVHT[data_87_19$WVHT==99] <- NA
+data_87_19$DPD[data_87_19$DPD==99] <- NA
+data_87_19$APD[data_87_19$APD==99] <- NA
+data_87_19$MWD[data_87_19$MWD==999] <- NA
+data_87_19$PRES[data_87_19$PRES==9999] <- NA
+data_87_19$ATMP[data_87_19$ATMP==999] <- NA
+data_87_19$WTMP[data_87_19$WTMP==999] <- NA
+data_87_19$DEWP[data_87_19$DEWP==999] <- NA
+data_87_19$VIS[data_87_19$VIS==99] <- NA
+data_87_19$TIDE[data_87_19$TIDE==99  || data_87_19$TIDE == NA] <- NA
+summary(data_87_19,na.rm = TRUE)
+```
+
+```{r check_missings}
+data_87_19[data_87_19 == NA] = NA
+# observations contains NA
+num3 = complete.cases(data_87_19)
+missing = data.frame(data_87_19)
+#rownames(missing) = 'missing values'
+gg_miss_var(missing) + theme(text = element_text(size=7)) +
+  ylab('Number of Missing Values in Each Variable')
+```
+
+The plot above shows that TIDE has the highest missing value.
+
+
+### 2.1.2 Dealing With Missing Values
+Due to the large number of missing values in this dataset, we decided to delete those variables which has over 10,000 missing values, for those variables which has less than 10,000 missing values, we use variable means to replace missing values. The new dataset called data_87_19 which still contain 107,611 rows. 
+
+To simplify our model even more, We merge 24 row of hours into one day, that result to our final data 'final' and it has 11,576 rows.
+
+```{r replace_missing_values}
+tmpdata  <-  data_87_19[ , !names(data_87_19) %in% c("WD","WDIR","MWD","VIS","TIDE","DEWP")]
+tmpdata  <-  na.omit(tmpdata)
+planes <-  group_by(tmpdata, DATE,MONTH)
+#asNumeric = function(x){
+# as.numeric(as.character(x))
+#}
+#factorsNumeric = function(d){
+#  modifyList(d, lapply(d[, sapply(d, is.factor)],asNumeric))
+#}
+#tmpdata = factorsNumeric(tmpdata)
+#for(i in 1:(ncol(tmpdata)-1)){
+  #tmpdata[is.na(tmpdata[,i]), i] <- mean(tmpdata[,i], na.rm = TRUE)
+#}
+
+```
+
+
+```{r}
+
+
+final  <-  summarise(planes, WSPD = mean(WSPD, na.rm = TRUE),
+                     GST = mean(GST, na.rm = TRUE), 
+                     WVHT = mean(WVHT, na.rm = TRUE), 
+                     DPD = mean(DPD, na.rm = TRUE),
+                     APD = mean(APD, na.rm = TRUE), 
+                     PRES = mean(PRES, na.rm = TRUE),
+                     ATMP = mean(ATMP, na.rm = TRUE), 
+                     WTMP = mean(WTMP, na.rm = TRUE))
+head(final)
+```
+
+
+###  2.1.2 Heatmap
+
+Shown in below is a correlation map for the year 1987 - year 2019 data that describes the relationship between the different features. 
+
+```{r heatmap}
+library(reshape2)
+#heatmap plot year3
+temp3 = final[2:10]
+cormat <- round(cor(temp3),2)
+melted_cormat <- melt(cormat)
+  # Get upper triangle of the correlation matrix
+  get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+  }
+upper_tri <- get_upper_tri(cormat)
+# Melt the correlation matrix
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() + ggtitle("year 1987 - year 2019")
+# Print the heatmap
+ggheatmap + 
+theme(axis.text.x = element_text(size=4),
+      axis.text.y = element_text(size=4),
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5)) +
+  scale_y_discrete(position = "right")
+```
+We can find that GST and ATMP have highest negative correlation, WSPD and GST have highest positive correlation.
+
+```{r}
+datetmp <- data.frame(final$ATMP, final$DATE)
+ggplot(datetmp, aes(final$DATE,final$ATMP))+geom_point() +scale_shape_manual(values=c(16,1))+
+  stat_smooth(method = "lm",col = "red")
+
+```
+This chart shows the distribution of air temperature in different years. After using regression, we find that overall temperature by year has an increasing tendency. From 1987 to 2020, it has increased by around 2 degrees in Fahrenheit. It is considerable, and there might be more obvious temperature rise in some other spots.
+
+
+
+```{r}
+final1 = final[which(final$MONTH == 1),]
+selectd_var = c("DATE","ATMP")
+final1 = final1[selectd_var]
+final1$DATE = year(final1$DATE)
+jan = aggregate(ATMP~DATE, data=final1, FUN=function(final1) c(mean=mean(final1), count=length(final1)))
+
+aggregate(ATMP~DATE, data=final1, FUN=function(final1) c(mean=mean(final1), count=length(final1)))
+
+
+datetmp <- data.frame(jan$ATMP, jan$DATE)
+jan1 = ggplot(datetmp, aes(jan$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Jan",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+
+```
+
+```{r}
+final2 = final[which(final$MONTH == 2),]
+selectd_var = c("DATE","ATMP")
+final2 = final2[selectd_var]
+final2$DATE = year(final2$DATE)
+
+feb = aggregate(ATMP~DATE, data=final2, FUN=function(final2) c(mean=mean(final2), count=length(final2)))
+
+datetmp <- data.frame(feb$ATMP, feb$DATE)
+f = ggplot(datetmp, aes(feb$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Feb",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+```{r}
+final3 = final[which(final$MONTH == 3),]
+selectd_var = c("DATE","ATMP")
+final3 = final3[selectd_var]
+final3$DATE = year(final3$DATE)
+
+mar = aggregate(ATMP~DATE, data=final3, FUN=function(final3) c(mean=mean(final3), count=length(final3)))
+
+datetmp <- data.frame(mar$ATMP, mar$DATE)
+m = ggplot(datetmp, aes(mar$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Mar",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+```{r}
+final4 = final[which(final$MONTH == 4),]
+selectd_var = c("DATE","ATMP")
+final4 = final4[selectd_var]
+final4$DATE = year(final4$DATE)
+
+apr = aggregate(ATMP~DATE, data=final4, FUN=function(final4) c(mean=mean(final4), count=length(final4)))
+
+datetmp <- data.frame(apr$ATMP, apr$DATE)
+a = ggplot(datetmp, aes(apr$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Apr",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+
+
+```{r}
+final5 = final[which(final$MONTH == 5),]
+selectd_var = c("DATE","ATMP")
+final5 = final5[selectd_var]
+final5$DATE = year(final5$DATE)
+
+may = aggregate(ATMP~DATE, data=final5, FUN=function(final5) c(mean=mean(final5), count=length(final5)))
+
+datetmp <- data.frame(may$ATMP, may$DATE)
+ma = ggplot(datetmp, aes(may$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="May",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+
+
+```{r}
+final6 = final[which(final$MONTH == 6),]
+selectd_var = c("DATE","ATMP")
+final6 = final6[selectd_var]
+final6$DATE = year(final6$DATE)
+
+jun = aggregate(ATMP~DATE, data=final6, FUN=function(final6) c(mean=mean(final6), count=length(final6)))
+
+datetmp <- data.frame(jun$ATMP, jun$DATE)
+j = ggplot(datetmp, aes(jun$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Jun",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+
+
+```{r}
+final7 = final[which(final$MONTH == 7),]
+selectd_var = c("DATE","ATMP")
+final7 = final7[selectd_var]
+final7$DATE = year(final7$DATE)
+
+jul = aggregate(ATMP~DATE, data=final7, FUN=function(final7) c(mean=mean(final7), count=length(final7)))
+
+datetmp <- data.frame(jul$ATMP, jul$DATE)
+ju = ggplot(datetmp, aes(jul$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Jul",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+
+```{r}
+final8 = final[which(final$MONTH == 8),]
+selectd_var = c("DATE","ATMP")
+final8 = final8[selectd_var]
+final8$DATE = year(final8$DATE)
+
+aug = aggregate(ATMP~DATE, data=final8, FUN=function(final8) c(mean=mean(final8), count=length(final8)))
+
+datetmp <- data.frame(aug$ATMP, aug$DATE)
+au = ggplot(datetmp, aes(aug$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Aug",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+
+```{r}
+final9 = final[which(final$MONTH == 9),]
+selectd_var = c("DATE","ATMP")
+final9 = final9[selectd_var]
+final9$DATE = year(final9$DATE)
+
+sep = aggregate(ATMP~DATE, data=final9, FUN=function(final9) c(mean=mean(final9), count=length(final9)))
+
+datetmp <- data.frame(sep$ATMP, sep$DATE)
+s = ggplot(datetmp, aes(sep$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Sep",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+
+
+```{r}
+final10 = final[which(final$MONTH == 10),]
+selectd_var = c("DATE","ATMP")
+final10 = final10[selectd_var]
+final10$DATE = year(final10$DATE)
+
+oct = aggregate(ATMP~DATE, data=final10, FUN=function(final10) c(mean=mean(final10), count=length(final10)))
+
+datetmp <- data.frame(oct$ATMP, oct$DATE)
+o = ggplot(datetmp, aes(oct$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Oct",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+
+
+```{r}
+final11 = final[which(final$MONTH == 11),]
+selectd_var = c("DATE","ATMP")
+final11 = final11[selectd_var]
+final11$DATE = year(final11$DATE)
+
+nov = aggregate(ATMP~DATE, data=final11, FUN=function(final11) c(mean=mean(final11), count=length(final11)))
+
+datetmp <- data.frame(nov$ATMP, nov$DATE)
+n = ggplot(datetmp, aes(nov$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Nov",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+```
+
+
+```{r}
+final12 = final[which(final$MONTH == 12),]
+selectd_var = c("DATE","ATMP")
+final12 = final12[selectd_var]
+final12$DATE = year(final12$DATE)
+
+dec = aggregate(ATMP~DATE, data=final12, FUN=function(final12) c(mean=mean(final12), count=length(final12)))
+
+datetmp <- data.frame(dec$ATMP, dec$DATE)
+d = ggplot(datetmp, aes(dec$DATE,mean))+geom_point() +scale_shape_manual(values=c(16,1))+labs(x="Dec",y = "Temp")+
+  stat_smooth(method = "lm",col = "red")
+
+
+```
+
+
+```{r}
+
+#install.packages("ggpubr")
+library(ggpubr)
+
+par(mfrow=c(6,2))
+finalplot<-ggarrange(jan1, f, m,a, ma,j, ncol = 2, nrow = 3)
+finalplot
+
+
+finalplot1<-ggarrange(ju, au,s,o, n,d,ncol = 2, nrow = 3)
+finalplot1
+```
+To make the results more intuitive, we regressed the monthly average air temperature from 1987 to 2020. The results show that, especially in the second half of the year, the temperature  increased significantly from 1987 to 2020. We may make a conclusion that global warming is relatively more serious in summer and autumn, and the rising tendency in spring and winter is not that obvious.
+
+```{r}
+datetmp <- data.frame(final$ATMP, final$PRES)
+ggplot(datetmp, aes(final$PRES,final$ATMP))+geom_point() +scale_shape_manual(values=c(16,1))+
+  stat_smooth(method = "lm",col = "red")
+```
+When the temperature increases, the air warms up and tends to rise - becoming thinner and lighter and therefore weighs less. As a result, atmospheric pressure decreases. From the previous chart, we know that the average temperature increases year by year, and according to physics, we know that atmospheric pressure will decrease with the increase of temperature in open environment. This graph confirms, on average, the inverse relationship between temperature and atmospheric pressure.
+
+```{r}
+datetmp <- data.frame(final$ATMP, final$WTMP)
+ggplot(datetmp, aes(final$WTMP,final$ATMP))+geom_point() +scale_shape_manual(values=c(16,1))+
+  stat_smooth(method = "lm",col = "red")
+```
+It is well known that water can conduct more heat than air. Every time the air temperature rises by one degree, the sea water temperature will rise more. As shown in the figure above, the air temperature is directly proportional to the sea water temperature. With global warming, the average temperature of sea water will also increase by year. As a result, marine pollution will be accelerated and various aquatic plants and animals will be affected.
+
+# 4. Conclusion
+
+## 4.1 Obstacles
+
+The first-hand data we got from the weather buoy is kind of massive and rough. Some of the certain data was missing or cannot be observed from a part of the early stage, and we think that it might due to it the tech issue at that time. So our group used R code to transfer a part of those data as ‘NA’ and deleted the column with over 100000 (because if one column has too many missing values this column would not be useful and convincing enough to analyze the data). Also, the format of time in the original data set was divided into several columns as 'MM', 'YY', 'DD' , etc, which is too distracting during the process of organizing and analyzing the data set. So we first divided the data set into 5 groups which each one of these groups has exactly the same amount of column numbers within it. Then we used R code to modify these groups as one format and merged them into a whole data set. Last but not least, even after deleting and modifying our data set through the first three steps, the size of our database was still too huge to handle. So we used R code to take the mean of each data within a day to get a condensed and operable data set. After the above steps, we were finally able to use regressions and graphs to interpret the data set and find our project target.
+
+## 4.2 Conclusion
+
+After doing a certain amount of background research, we finally find out that there are 3 elements in our data sets are closely related to the existence of global warming which are 'Air Temperature'(ATMP), 'Water Temperature' (WTMP), and 'Atmospheric Pressure' (PRES). To conducting our final conclusion, we are going to narrate our explanation by expanding the causing and relationship between these three elements. 
+First, we noticed that the data of the air temperature observed by the weather buoy among the whole year is gradually growing up from 1987 to 2020. Visually, the increment of 1-2 Celsius degrees may not seem so significant, however, the thing we need to know is that for the climatic environment, sometimes even a slight change may cause a huge consequence of the butterfly effect. For instance, the heat energy brought by the rising temperature will provide huge kinetic energy to the air and ocean, resulting in disasters such as large or even super large typhoons, hurricanes, and tsunamis. Thus, this kind of increment can already be regarded as significant. 
+With further analyzing the data using the regression model, we find out there is a conspicuous relation between the water temperature and the air temperature which are almost perfectly proportional to each other. This also verifies the example I gave in the previous paragraph. 
+What's more, the rising of the air temperature and water temperature also makes sense to another regression model we made for the atmospheric pressure. From the graphic, we can see there is a declining trend on the graphic of the atmospheric pressure. This change can be explained through a simple Physics formula: P=F/S. It can be seen from the formula that under the same area, the pressure is only related to F. As the temperature rises, the atmosphere becomes thinner and the density becomes smaller; therefore, in the specified area where the atmosphere is thinner, the F becomes smaller, so the air pressure would be relatively lower. As the three elements of ATMP,  WTMP, and PRES are all involved in this simple formula, once one of them changes negatively, these three elements will produce a vicious circle which would be a harmful issue for our environment.
+In summary, we would say that base on the analysis of the data we received from the weather buoy in the NOAA National Data Buoy Center, we can infer that the existence of global warming is positive. Although the reasons behind the formation of global warming 
+may still need more data and information to verify, all of us should pay more attention to this issue because if we want our living environment to become better, it will require the contribution of all the creatures living on this planet.
+# 5.Reference
+
+[National Data Buoy Center](https://www.ndbc.noaa.gov/station_page.php?station=44013)
